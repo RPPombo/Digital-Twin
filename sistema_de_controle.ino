@@ -76,6 +76,9 @@ void loop() {
   long duracao = pulseIn(ECHO, HIGH);
   float distancia_mm = (duracao * 0.343) / 2; // mm
 
+    // --- Timestamp ---
+  unsigned long timestamp = millis();
+
   // --- Atualiza retração ---
   retraido = (distancia_mm >= distancia_inicial - 2 && distancia_mm <= distancia_inicial + 2);
 
@@ -96,9 +99,6 @@ void loop() {
   if (millis() - tempo_salvo > 2000) {
     digitalWrite(RELE_VALVULA, HIGH);
   }
-
-  // --- Timestamp ---
-  unsigned long timestamp = millis();
 
   // --- Envio em JSON ---
   Serial.print("{");
