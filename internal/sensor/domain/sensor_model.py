@@ -1,6 +1,10 @@
-from pydantic import BaseModel
+# internal/sensor/domain/sensor_model.py
+from pydantic import BaseModel, Field
 from datetime import datetime
 
-class SensorData(BaseModel):
-    id: int
-    # ...
+class SensorReading(BaseModel):
+    device_id: str
+    sensor: str
+    value: float
+    unit: str | None = None
+    ts: datetime = Field(default_factory=datetime.utcnow)
