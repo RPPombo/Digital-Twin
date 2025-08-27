@@ -26,6 +26,7 @@ float distancia_inicial = 0;
 bool retraido = true;
 bool aquecedorLigado = false;
 unsigned long tempo_salvo = 0;
+unsigned long cooldown = 0;
 
 void setup() {
   Serial.begin(9600);
@@ -92,12 +93,15 @@ void loop() {
   bool temperatura_ideal = !aquecedorLigado;
 
   // --- Ação da válvula ---
-  if (pao && !mao && temperatura_ideal && retraido) {
-    digitalWrite(RELE_VALVULA, LOW);
-    tempo_salvo = millis();
+  if (milis() - cooldown > 10000){
+    if (pao && !mao && temperatura_ideal && retraido) {
+      digitalWrite(RELE_VALVULA, LOW);
+      tempo_salvo = millis();
+    }
   }
   if (millis() - tempo_salvo > 2000) {
     digitalWrite(RELE_VALVULA, HIGH);
+    cooldown = milis()
   }
 
   // --- Envio em JSON ---
