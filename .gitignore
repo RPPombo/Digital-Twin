@@ -1,5 +1,4 @@
-# Ignorar ambiente virtual
+__init__.py
 .venv/
-
-# Ignorar pasta de dados
+__pycache__/
 dados/
