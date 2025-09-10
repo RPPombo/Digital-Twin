@@ -93,7 +93,7 @@ void loop() {
   bool temperatura_ideal = !aquecedorLigado;
 
   // --- Ação da válvula ---
-  if (milis() - cooldown > 10000){
+  if (millis() - cooldown > 10000){
     if (pao && !mao && temperatura_ideal && retraido) {
       digitalWrite(RELE_VALVULA, LOW);
       tempo_salvo = millis();
@@ -101,7 +101,7 @@ void loop() {
   }
   if (millis() - tempo_salvo > 2000) {
     digitalWrite(RELE_VALVULA, HIGH);
-    cooldown = milis()
+    cooldown = millis();
   }
 
   // --- Envio em JSON ---
