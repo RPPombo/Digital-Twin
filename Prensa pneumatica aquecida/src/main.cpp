@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <max6675.h>
 
 // --- Termopar MAX6675 ---
@@ -10,8 +11,8 @@ MAX6675 termopar(thermoCLK, thermoCS, thermoDO);
 #define PINO_PRESSAO A0
 
 // --- Sensores infravermelho (TCRT5000) ---
-#define IR_PAO 2
-#define IR_MAO 3
+#define IR_PAO A2
+#define IR_MAO A1
 
 // --- HC-SR04 ---
 #define TRIG 4
@@ -65,8 +66,21 @@ void loop() {
   float pressao_kPa = tensao * 100.0; // ajustar via calibração
 
   // --- Sensores IR ---
-  bool pao = digitalRead(IR_PAO); // detecta pão
-  bool mao = digitalRead(IR_MAO); // detecta mão
+  bool leiturapao = analogRead(IR_PAO); // detecta pão
+  bool pao;
+  if (leiturapao >= 500) {
+    pao = true;
+  } else {
+    pao = false;
+  }
+  float leituramao = analogRead(IR_MAO); // detecta mão
+  bool mao;
+  if (leituramao >= 500) {
+    mao = true;
+  } else {
+    mao = false;
+  }
+
 
   // --- HC-SR04 ---
   digitalWrite(TRIG, LOW);
@@ -113,4 +127,5 @@ void loop() {
   Serial.print("\"IR_mao\":"); Serial.print(mao); Serial.print(",");
   Serial.print("\"distancia_mm\":"); Serial.print(distancia_mm, 1);
   Serial.println("}");
+  delay(500);
 }
