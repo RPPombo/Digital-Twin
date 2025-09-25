@@ -1,6 +1,6 @@
 # cmd/main.py
 from fastapi import FastAPI
-from internal.sensor.delivery.http_handler import router, bind_usecase
+from internal.sensor.delivery.http_handler import router
 from internal.sensor.usecase.sensor_usecase import SensorUsecase
 from internal.sensor.repository.sensor_repository import SensorRepository
 
@@ -8,7 +8,7 @@ app = FastAPI(title="Digital Twin API")
 
 repo = SensorRepository()
 usecase = SensorUsecase(repo)
-bind_usecase(usecase)        # <— antes de incluir router
+      # <— antes de incluir router
 app.include_router(router)   # <— depois
 
 @app.get("/")

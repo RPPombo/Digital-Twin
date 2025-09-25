@@ -1,48 +1,39 @@
 # internal/sensor/delivery/http_handler.py
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
-from fastapi.encoders import jsonable_encoder
-import asyncio
-import json
-import time
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Body
 from starlette.websockets import WebSocketState
-from internal.sensor.domain.sensor_model import SensorReading
 from collections import defaultdict
+import asyncio, json, time, threading, random, math
+
+# =============== opcional (serial real) ===============
+try:
+    import serial  # pip install pyserial
+except Exception:
+    serial = None
 
 router = APIRouter()
 
-# será injetado pelo main; não crie outro usecase aqui!
-_usecase = None
-_clients = set()
-
-def bind_usecase(u):
-    """Chamado no main.py para injetar o mesmo usecase usado nos POSTs."""
-    global _usecase
-    _usecase = u
-
-# --- opcional: broadcast/WS (se quiser ver em tempo real) ---
-
-
-_clients_all = set()                # quem recebe tudo
-_subs = defaultdict(set)            # device_id -> {ws}
+# =============================================================================
+# WS: assinatura por device + broadcast
+# =============================================================================
+_clients_all = set()
+_subs = defaultdict(set)
 
 async def _broadcast(msg: dict):
-    """Envia só para quem assinou o device_id, ou para 'all'."""
-    # identifica device_id do payload
+    """Envia msg para todos ou para quem assinou o device_id."""
     did = (msg.get("reading") or {}).get("device_id") or msg.get("device_id")
     targets = set(_clients_all)
     if did and did in _subs:
         targets |= _subs[did]
 
+    payload = json.dumps(msg)
     dead = []
-    payload = json.dumps(msg)  # força serialização
     for ws in list(targets):
         try:
             if ws.application_state == WebSocketState.CONNECTED:
                 await ws.send_text(payload)
             else:
                 dead.append(ws)
-        except Exception as e:
-            print(f"[ws] erro ao enviar: {e}")
+        except Exception:
             dead.append(ws)
 
     for ws in dead:
@@ -50,56 +41,9 @@ async def _broadcast(msg: dict):
         for s in _subs.values():
             s.discard(ws)
 
-@router.post("/sensor/ingest")
-async def ingest(reading: SensorReading, bg: BackgroundTasks):
-    if not _usecase:
-        raise HTTPException(500, "usecase not bound")
-
-    # 1) salva estado e agenda histórico
-    _usecase.repo.save_last(reading)
-    bg.add_task(_usecase.repo.append_csv, reading)
-
-    # 2) monta payload serializável, com fallback se não houver calibração ainda
-    mapped = None
-    if hasattr(_usecase, "get_last_mapped"):
-        try:
-            mapped = _usecase.get_last_mapped(reading.device_id, reading.sensor)
-        except Exception as e:
-            print(f"[ingest] get_last_mapped falhou: {e}")
-
-    if not mapped:
-        # fallback pro próprio reading (raw == twin)
-        mapped = reading.dict() if hasattr(reading, "dict") else reading.model_dump()
-        mapped["raw_value"]  = float(reading.value)
-        mapped["twin_value"] = float(reading.value)
-    elif not isinstance(mapped, dict):
-        mapped = mapped.dict() if hasattr(mapped, "dict") else mapped.model_dump()
-
-    # 🔹 remove timestamp se existir
-    mapped.pop("ts", None)
-
-    payload = {"event": "ingest", "reading": mapped}
-    print(f"[ingest] broadcast -> {payload}")  # LOG pra ver no console
-
-    # 3) push tempo real para os clientes WS
-    await _broadcast(payload)
-
-    return {"ok": True}
-
-@router.get("/sensor/last/{device_id}/{sensor}")
-def last(device_id: str, sensor: str):
-    if not _usecase:
-        raise HTTPException(500, "usecase not bound")
-    r = _usecase.repo.get_last(device_id, sensor)
-    if not r:
-        # 404 quando ainda não recebemos essa chave
-        raise HTTPException(404, f"Sem dados para {device_id}/{sensor}")
-    return jsonable_encoder(r)
-
 @router.websocket("/sensor/ws")
 async def ws(ws: WebSocket):
     await ws.accept()
-    # opcional: ?device_id=sim-arduino-01 ou múltiplos ?device_id=a,b,c
     q = ws.query_params.get("device_id")
     if q:
         for did in q.split(","):
@@ -108,10 +52,8 @@ async def ws(ws: WebSocket):
     else:
         _clients_all.add(ws)
         await ws.send_json({"status": "connected", "filter": "all"})
-
     try:
         while True:
-            # aceita pings; manda keepalive se ficar quieto
             try:
                 await asyncio.wait_for(ws.receive_text(), timeout=30)
             except asyncio.TimeoutError:
@@ -121,50 +63,140 @@ async def ws(ws: WebSocket):
         for s in _subs.values():
             s.discard(ws)
 
-@router.get("/sensor/latest/{device_id}")
-def latest_all(device_id: str):
-    if not _usecase:
-        raise HTTPException(500, "usecase not bound")
-    readings = _usecase.repo.get_all_last(device_id)
-    if not readings:
-        raise HTTPException(404, f"Sem dados para {device_id}")
-    return jsonable_encoder([r for r in readings])
+# =============================================================================
+# FAKE: start/stop (thread que gera leituras e faz broadcast)
+# =============================================================================
+_fake_thread = None
+_fake_stop_event = None
 
-@router.get("/sensor/twin/{device_id}")
-def twin_state(device_id: str):
-    if not _usecase:
-        raise HTTPException(500, "usecase not bound")
+def _fake_loop(device_id: str, period: float, loop: asyncio.AbstractEventLoop):
+    t0 = time.time()
+    print(f"[fake] iniciado device={device_id} period={period}s")
+    try:
+        while not _fake_stop_event.is_set():
+            t = time.time() - t0
+            temperatura = round(170 + 20*math.sin(t/15) + random.uniform(-0.8, 0.8), 2)
+            pressao_kpa = round(200 + 50*math.sin(t/20) + random.uniform(-2, 2), 2)
+            distancia   = round(300 + 30*math.sin(t/10) + random.uniform(-3, 3), 1)
+            ir_pao = 1 if (int(t) % 7 == 0 or random.random() < 0.05) else 0
+            ir_mao = 1 if (int(t) % 13 == 0 or random.random() < 0.03) else 0
 
-    # pega todas as últimas leituras cruas do device
-    raw_list = _usecase.repo.get_all_last(device_id)
-    if not raw_list:
-        raise HTTPException(404, f"Sem dados para {device_id}")
+            reading = {
+                "device_id": device_id,
+                "temperature": temperatura,
+                "pressure": pressao_kpa,
+                "distance": distancia,
+                "ir_bread": bool(ir_pao),
+                "ir_hand":  bool(ir_mao),
+            }
+            payload = {"event": "ingest", "reading": reading}
+            loop.call_soon_threadsafe(asyncio.create_task, _broadcast(payload))
+            time.sleep(period)
+    finally:
+        print("[fake] parado")
 
-    # mapeia para valores do Twin (se existir calibração)
-    sensors = []
-    for r in raw_list:
-        if hasattr(_usecase, "get_last_mapped"):
-            d = _usecase.get_last_mapped(r.device_id, r.sensor)
-            # get_last_mapped deve devolver dict serializável; se não, faça fallback:
-            if not isinstance(d, dict):
-                d = r.dict() if hasattr(r, "dict") else r.model_dump()
-                d["raw_value"] = d.get("value")
-                d["twin_value"] = d.get("value")
-        else:
-            d = r.dict() if hasattr(r, "dict") else r.model_dump()
-            d["raw_value"] = d.get("value")
-            d["twin_value"] = d.get("value")
-        sensors.append(d)   
+@router.post("/fake/start")
+async def fake_start(body: dict = Body(default={"device_id":"sim-arduino-01","period":1.0})):
+    global _fake_thread, _fake_stop_event
+    if _fake_thread and _fake_thread.is_alive():
+        raise HTTPException(409, "Fake já em execução.")
+    device_id = (body.get("device_id") or "sim-arduino-01").strip()
+    period = float(body.get("period") or 1.0)
+    loop = asyncio.get_running_loop()
+    _fake_stop_event = threading.Event()
+    _fake_thread = threading.Thread(target=_fake_loop, args=(device_id, period, loop), daemon=True)
+    _fake_thread.start()
+    return {"ok": True, "mode": "fake", "device_id": device_id, "period": period}
 
-    payload = {"device_id": device_id, "sensors": sensors}
-    return jsonable_encoder(payload)
+@router.post("/fake/stop")
+async def fake_stop():
+    global _fake_thread, _fake_stop_event
+    if not _fake_thread or not _fake_thread.is_alive():
+        return {"ok": True, "status": "fake já parado"}
+    _fake_stop_event.set()
+    _fake_thread.join(timeout=2.0)
+    _fake_thread = None
+    return {"ok": True, "stopped": True}
 
-@router.get("/health")
-def health():
-    return {"ok": True}
+# =============================================================================
+# SERIAL REAL: start/stop (thread que lê JSON por linha e broadcast)
+# =============================================================================
+_serial_thread = None
+_serial_stop_event = None
+_serial_port_opened = None
 
-@router.get("/sensor/debug-broadcast")
-async def debug_broadcast():
-    msg = {"event": "debug", "now": int(time.time()*1000)}
-    await _broadcast(msg)
-    return {"ok": True, "clients": len(_clients)}
+def _serial_loop(port: str, baud: int, device_id: str, loop: asyncio.AbstractEventLoop):
+    global _serial_port_opened
+    try:
+        ser = serial.Serial(port=port, baudrate=baud, timeout=1)
+        _serial_port_opened = port
+        print(f"[serial] aberto {port}@{baud}")
+    except Exception as e:
+        _serial_port_opened = None
+        print(f"[serial] erro abrindo {port}: {e}")
+        return
+
+    try:
+        while not _serial_stop_event.is_set():
+            line = ser.readline()
+            if not line:
+                continue
+            try:
+                data = json.loads(line.decode(errors="ignore").strip())
+            except Exception:
+                continue  # ignora linhas não-JSON
+
+            # normaliza chaves comuns do Arduino
+            reading = {
+                "device_id": device_id,
+                "temperature": data.get("temperatura_C") or data.get("temperature"),
+                "pressure":    data.get("pressao_un")    or data.get("pressure"),
+                "distance":    data.get("distancia_mm")  or data.get("distance"),
+                "ir_bread":    data.get("IR_pao") if "IR_pao" in data else data.get("ir_bread"),
+                "ir_hand":     data.get("IR_mao") if "IR_mao" in data else data.get("ir_hand"),
+            }
+            reading = {k:v for k,v in reading.items() if v is not None}
+
+            payload = {"event": "ingest", "reading": reading}
+            loop.call_soon_threadsafe(asyncio.create_task, _broadcast(payload))
+    finally:
+        try:
+            ser.close()
+        except Exception:
+            pass
+        _serial_port_opened = None
+        print("[serial] fechado")
+
+@router.post("/serial/start")
+async def serial_start(body: dict = Body(...)):
+    """
+    body: { "port": "COM5", "baudrate": 9600, "device_id": "sim-arduino-01" }
+    """
+    if serial is None:
+        raise HTTPException(500, "pyserial não disponível (pip install pyserial).")
+
+    global _serial_thread, _serial_stop_event
+    if _serial_thread and _serial_thread.is_alive():
+        raise HTTPException(409, f"Serial já rodando em {_serial_port_opened}.")
+
+    port = (body.get("port") or "").strip()
+    if not port:
+        raise HTTPException(400, "Informe 'port' (ex.: COM3, /dev/ttyUSB0).")
+    baud = int(body.get("baudrate") or 9600)
+    device_id = (body.get("device_id") or "sim-arduino-01").strip()
+
+    loop = asyncio.get_running_loop()
+    _serial_stop_event = threading.Event()
+    _serial_thread = threading.Thread(target=_serial_loop, args=(port, baud, device_id, loop), daemon=True)
+    _serial_thread.start()
+    return {"ok": True, "mode": "serial", "port": port, "baudrate": baud, "device_id": device_id}
+
+@router.post("/serial/stop")
+async def serial_stop():
+    global _serial_thread, _serial_stop_event
+    if not _serial_thread or not _serial_thread.is_alive():
+        return {"ok": True, "status": "serial já parado"}
+    _serial_stop_event.set()
+    _serial_thread.join(timeout=2.0)
+    _serial_thread = None
+    return {"ok": True, "stopped": True}

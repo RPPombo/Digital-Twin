@@ -18,30 +18,33 @@ def send(api, payload):
         print("[ERRO]", e, "payload=", payload)
 
 def main(api_base):
-    api = f"{api_base.rstrip('/')}/sensor/ingest"
-    t0 = time.time()
-    while True:
-        t = time.time() - t0
+    # novo endpoint: /fake/start (para ativar o modo fake no backend)
+    start_url = f"{api_base.rstrip('/')}/fake/start"
+    stop_url  = f"{api_base.rstrip('/')}/fake/stop"
 
-        temperatura = round(170 + 20*math.sin(t/15) + random.uniform(-0.8, 0.8), 2)
-        pressao_kpa = round(200 + 50*math.sin(t/20) + random.uniform(-2, 2), 2)
-        distancia   = round(300 + 30*math.sin(t/10) + random.uniform(-3, 3), 1)
+    # inicia o fake no backend
+    print("[INFO] Iniciando fake generator no backend…")
+    r = requests.post(start_url,
+                      json={"device_id": DEVICE, "period": PERIOD},
+                      headers=HEADERS)
+    print("[INFO] resposta:", r.status_code, r.text)
 
-        ir_pao = 1 if (int(t) % 7  == 0 or random.random() < 0.05) else 0
-        ir_mao = 1 if (int(t) % 13 == 0 or random.random() < 0.03) else 0
+    print(f"[INFO] Fake rodando. Conecte em ws://localhost:8000/sensor/ws "
+          f"ou ws://localhost:8000/sensor/ws?device_id={DEVICE}")
+    print("Pressione CTRL+C para parar…")
 
-        send(api, {"device_id": DEVICE, "sensor": "temperature", "value": temperatura, "unit": "C"})
-        send(api, {"device_id": DEVICE, "sensor": "pressure",    "value": pressao_kpa, "unit": "kPa"})
-        send(api, {"device_id": DEVICE, "sensor": "ir_bread",    "value": float(ir_pao), "unit": None})
-        send(api, {"device_id": DEVICE, "sensor": "ir_hand",     "value": float(ir_mao), "unit": None})
-        send(api, {"device_id": DEVICE, "sensor": "distance",    "value": distancia, "unit": "mm"})
-
-        time.sleep(PERIOD)
+    try:
+        while True:
+            time.sleep(1)  # só mantém vivo
+    except KeyboardInterrupt:
+        print("\n[INFO] Parando fake no backend…")
+        r = requests.post(stop_url, headers=HEADERS)
+        print("[INFO] resposta:", r.status_code, r.text)
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Uso: python send_fake.py <URL_BASE>")
-        print("Exemplo: python send_fake.py https://34c903ad0294.ngrok-free.app")
+        print("Exemplo: python send_fake.py http://localhost:8000")
         sys.exit(1)
 
     main(sys.argv[1])
