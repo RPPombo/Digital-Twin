@@ -1,6 +1,14 @@
 #include <Arduino.h>
 #include <max6675.h>
 
+// --- Botão ---
+#define BOTAO 2
+
+// --- LED RGB ---
+#define RED 5
+#define BLUE 3
+#define GREEN 6
+
 // --- Sensores Infravermelho ---
 #define IR_MAO A0
 #define IR_PAO 8
@@ -19,19 +27,20 @@ const int thermoCLK = 13; // SCK
 MAX6675 termopar(thermoCLK, thermoCS, thermoDO);
 
 // --- RELÉS (ativo em LOW) ---
-#define RELE_VALVULA   6
+#define RELE_VALVULA 4
 #define RELE_AQUECEDOR 7
 
 // --- Estado ---
+int r = 255, g = 255, b =255;
+bool acionar = false;
 float distancia_inicial = 0.0;
 bool  retraido           = true;
 bool  aquecedorLigado    = false;
 bool  valvulaAberta      = false;
 unsigned long tempo_salvo = 0;
 unsigned long cooldown    = 0;
-
 const float SOM_MM_POR_US     = 0.343;   // 343 m/s = 0.343 mm/us
-const unsigned long ECHO_TOUS = 30000UL; // timeout do pulseIn (~5 m)
+const unsigned long ECHO_TOUS = 30000; // timeout do pulseIn (~5 m)
 
 // Função para medir distância (mm); retorna <0 se timeout
 float medirDistanciaMM() {
@@ -45,8 +54,21 @@ float medirDistanciaMM() {
   return (duracao * SOM_MM_POR_US) / 2.0;
 }
 
+void setColor(int r, int g, int b) {
+  analogWrite(RED, r);
+  analogWrite(GREEN, g);
+  analogWrite(BLUE, b);
+}
+
 void setup() {
   Serial.begin(9600);
+
+  pinMode(BOTAO, INPUT_PULLUP);
+
+  pinMode(RED, OUTPUT);
+  pinMode(BLUE, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+  setColor(r, g, b);
 
   pinMode(IR_PAO, INPUT);
   pinMode(IR_MAO, INPUT);
@@ -76,6 +98,27 @@ void setup() {
 void loop() {
   // --- Termopar ---
   float temperatura = termopar.readCelsius();
+
+  // --- Mudança de cor no LED ---
+  if (temperatura <= 100) {
+    // Branco → Amarelo (azul diminui até 0)
+    float fator = temperatura / 100.0;
+    r = 255;
+    g = 255;
+    b = 255 - (255 * fator);
+  } else if (temperatura <= 150) {
+    // Amarelo → Laranja (verde cai de 255 → 100)
+    float fator = (temperatura - 100) / 50.0;
+    r = 255;
+    g = 255 - (155 * fator);
+    b = 0;
+  } else if (temperatura <= 185) {
+    // Laranja → Vermelho (verde 100 → 0)
+    float fator = (temperatura - 150) / 35.0;
+    r = 255;
+    g = 100 - (100 * fator);
+    b = 0;
+  }
 
   // --- Pressão ---
   int leituraPressao = analogRead(PRESSAO);
@@ -108,8 +151,11 @@ void loop() {
   digitalWrite(RELE_AQUECEDOR, aquecedorLigado ? LOW : HIGH);
   bool temperatura_ideal = !aquecedorLigado;
 
+  // --- Acionamento do botão ---
+  acionar = (digitalRead(BOTAO) == LOW);
+
   // --- Ação da válvula: 2s aberta + 10s cooldown ---
-  if (!valvulaAberta && (agora - cooldown > 10000)) {
+  if (!valvulaAberta && (agora - cooldown > 10000) && acionar) {
     if (pao && !mao && temperatura_ideal && retraido) {
       digitalWrite(RELE_VALVULA, LOW); // abre (ativo em LOW)
       tempo_salvo = agora;
