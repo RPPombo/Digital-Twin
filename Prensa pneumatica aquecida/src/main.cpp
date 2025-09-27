@@ -31,15 +31,15 @@ MAX6675 termopar(thermoCLK, thermoCS, thermoDO);
 #define RELE_AQUECEDOR 7
 
 // --- Estado ---
-int r = 255, g = 255, b =255;
-bool acionar = false;
+int r = 255, g = 255, b  =255;
+bool acionar             = false;
 float distancia_inicial = 0.0;
 bool  retraido           = true;
 bool  aquecedorLigado    = false;
 bool  valvulaAberta      = false;
 unsigned long tempo_salvo = 0;
 unsigned long cooldown    = 0;
-const float SOM_MM_POR_US     = 0.343;   // 343 m/s = 0.343 mm/us
+const float SOM_MM_POR_US     = 0.343; // 343 m/s = 0.343 mm/us
 const unsigned long ECHO_TOUS = 30000; // timeout do pulseIn (~5 m)
 
 // Função para medir distância (mm); retorna <0 se timeout
@@ -139,7 +139,7 @@ void loop() {
   if (distancia_mm >= 0) {
     float diff = distancia_mm - distancia_inicial;
     if (diff < 0) diff = -diff;
-    retraido = (diff <= 10.0); // tolerância de 10 mm
+    retraido = (diff <= 2.0); // tolerância de 2 mm
   }
 
   // --- Controle de temperatura com histerese ---
