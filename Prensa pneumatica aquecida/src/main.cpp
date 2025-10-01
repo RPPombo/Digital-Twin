@@ -125,7 +125,7 @@ void loop() {
   float pressao = leituraPressao * 0.08; 
 
   // --- Sensores IR ---
-  bool pao = (digitalRead(IR_PAO) == HIGH);  // se seu IR for ativo em LOW, inverta
+  bool pao = (digitalRead(IR_PAO) == LOW);  // se seu IR for ativo em LOW, inverta
   int  leituramao = analogRead(IR_MAO);
   bool mao = (leituramao <= 900);            // ajustar threshold no hardware
 
@@ -160,6 +160,7 @@ void loop() {
       digitalWrite(RELE_VALVULA, LOW); // abre (ativo em LOW)
       tempo_salvo = agora;
       valvulaAberta = true;
+      acionar = false;
     }
   }
   if (valvulaAberta && (agora - tempo_salvo > 2000)) {
