@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Industrial - Digital Twin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-gradient-start: #0f0f1e;
+            --bg-gradient-end: #1a1a2e;
+            --card-bg: rgba(30, 30, 46, 0.8);
+            --card-border: rgba(100, 100, 255, 0.2);
+            --text-primary: #e8e8f0;
+            --text-secondary: #a0a0b8;
+            --accent-blue: #5b8def;
+            --accent-cyan: #4ecdc4;
+            --accent-purple: #9b59b6;
+            --green: #2ecc71;
+            --red: #e74c3c;
+            --orange: #f39c12;
+            --yellow: #f1c40f;
+            --shadow-glow: rgba(91, 141, 239, 0.15);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(91, 141, 239, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(155, 89, 182, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .settings-toggle {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
+            padding: 0.75rem 1.25rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .settings-toggle:hover {
+            background: rgba(91, 141, 239, 0.2);
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 20px var(--shadow-glow);
+            transform: translateY(-2px);
+        }
+
+        .settings-toggle svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100vh;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border-left: 1px solid var(--card-border);
+            padding: 2rem;
+            z-index: 1000;
+            transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow-y: auto;
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .sidebar.open {
+            right: 0;
+        }
+
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+        }
+
+        .sidebar-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar-header h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .close-sidebar {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .close-sidebar:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .sidebar-section {
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-section h3 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-cyan);
+            margin-bottom: 1rem;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--red);
+            box-shadow: 0 0 10px currentColor;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-indicator.connected {
+            background: var(--green);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .status-text.connected {
+            color: var(--green);
+        }
+
+        .control-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s ease;
+        }
+
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.875rem 1.25rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-family: 'Inter', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: white;
+            box-shadow: 0 4px 15px rgba(91, 141, 239, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(91, 141, 239, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--green), #27ae60);
+            color: white;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+        }
+
+        .btn-success:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(46, 204, 113, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--red), #c0392b);
+            color: white;
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(231, 76, 60, 0.4);
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .card-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.75rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px var(--shadow-glow);
+            border-color: var(--accent-blue);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card .label {
+            color: var(--accent-cyan);
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .card .label::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--accent-cyan);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            transition: all 0.5s ease;
+            line-height: 1;
+            margin: 0.5rem 0;
+        }
+
+        .card .unit {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-top: 0.5rem;
+        }
+
+        .sensor-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .sensor-column .card {
+            padding: 1.25rem;
+        }
+
+        .sensor-column .card .value {
+            font-size: 1.75rem;
+        }
+
+        .temp-cold { color: var(--accent-cyan); }
+        .temp-normal { color: var(--green); }
+        .temp-hot { color: var(--orange); }
+        .temp-critical { color: var(--red); }
+
+        .gauge-container {
+            width: 180px;
+            height: 90px;
+            margin: 1.5rem auto 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .gauge-bg {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: conic-gradient(
+                from -90deg,
+                var(--green) 0%,
+                var(--yellow) 25%,
+                var(--orange) 50%,
+                var(--red) 100%
+            );
+            position: absolute;
+            top: 0;
+            left: 0;
+            filter: drop-shadow(0 0 10px rgba(91, 141, 239, 0.3));
+        }
+
+        .gauge-cover {
+            width: 140px;
+            height: 140px;
+            background: var(--card-bg);
+            border-radius: 50%;
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .gauge-needle {
+            width: 3px;
+            height: 70px;
+            background: linear-gradient(to top, var(--accent-blue), white);
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform-origin: bottom center;
+            transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateX(-50%) rotate(-90deg);
+            border-radius: 3px;
+            box-shadow: 0 0 10px rgba(91, 141, 239, 0.5);
+        }
+
+        .gauge-needle::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 12px;
+            height: 12px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            box-shadow: 0 0 15px var(--accent-blue);
+        }
+
+        .gauge-value-display {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+
+        .gauge-value-display .unit {
+            font-size: 0.8rem;
+            display: block;
+            margin-top: 0.25rem;
+        }
+
+        .log-widget {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 1rem;
+        }
+
+        .tab-button {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab-button:hover {
+            color: var(--text-primary);
+        }
+
+        .tab-button.active {
+            color: var(--accent-cyan);
+            border-bottom-color: var(--accent-cyan);
+        }
+
+        .log-pane {
+            height: 200px;
+            background: rgba(0, 0, 0, 0.4);
+            font-family: 'Courier New', monospace;
+            padding: 1rem;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            border-radius: 8px;
+            display: none;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .log-pane.active {
+            display: block;
+        }
+
+        .log-pane::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-pane::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+
+        .log-pane::-webkit-scrollbar-thumb {
+            background: var(--accent-blue);
+            border-radius: 4px;
+        }
+
+        .log-entry {
+            margin-bottom: 0.5rem;
+            line-height: 1.5;
+        }
+
+        .log-entry .timestamp {
+            color: var(--text-secondary);
+        }
+
+        .log-entry .message.info {
+            color: var(--accent-cyan);
+        }
+
+        .log-entry .message.success {
+            color: var(--green);
+            font-weight: 600;
+        }
+
+        .log-entry .message.error {
+            color: var(--red);
+            font-weight: 600;
+        }
+
+        .log-entry .message.warn {
+            color: var(--orange);
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .sidebar {
+                width: 100%;
+                right: -100%;
+            }
+
+            .card-container {
+                grid-template-columns: 1fr;
+            }
+
+            .card .value {
+                font-size: 2.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>Configurações</h2>
+            <button class="close-sidebar" id="close-sidebar">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+
+        <div class="sidebar-section">
+            <h3>Conexão</h3>
+            <div class="connection-status">
+                <div class="status-indicator" id="status-indicator"></div>
+                <span class="status-text" id="status-text">Desconectado</span>
+            </div>
+            
+            <div class="control-group">
+                <label for="ws-url">URL do WebSocket</label>
+                <input type="text" id="ws-url" value="ws://localhost:4000/sensor/ws">
+            </div>
+
+            <button class="btn btn-primary" id="connect-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+                Conectar WebSocket
+            </button>
+        </div>
+
+        <div class="sidebar-section">
+            <h3>Servidor</h3>
+            <div class="control-group">
+                <label for="http-url">URL do Servidor HTTP</label>
+                <input type="text" id="http-url" value="http://localhost:4000">
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <h3>Fonte de Dados</h3>
+            <div class="control-group">
+                <label for="source-select">Selecione a Fonte</label>
+                <select id="source-select">
+                    <option value="fake">Simulação (Fake)</option>
+                    <option value="serial">Arduino (Real)</option>
+                </select>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-success" id="start-btn" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    Iniciar
+                </button>
+                <button class="btn btn-danger" id="stop-btn" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="6" width="12" height="12"></rect>
+                    </svg>
+                    Parar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>Dashboard Industrial - Digital Twin</h1>
+            <button class="settings-toggle" id="settings-toggle">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 1v6m0 6v6m-9-9h6m6 0h6"></path>
+                    <path d="m4.93 4.93 4.24 4.24m5.66 0 4.24-4.24m0 14.14-4.24-4.24m-5.66 0-4.24 4.24"></path>
+                </svg>
+                Configurações
+            </button>
+        </div>
+
+        <div class="card-container" id="card-container"> </div>
+
+        <div class="log-widget">
+            <div class="tabs">
+                <button class="tab-button active" data-tab="event-log">Log de Eventos</button>
+                <button class="tab-button" data-tab="raw-log">Raw WebSocket</button>
+            </div>
+            <div id="event-log" class="log-pane active"></div>
+            <div id="raw-log" class="log-pane"></div>
+        </div>
+    </div>
+
+    <script>
+        const elements = {
+            httpUrl: document.getElementById('http-url'),
+            wsUrl: document.getElementById('ws-url'),
+            connectBtn: document.getElementById('connect-btn'),
+            sourceSelect: document.getElementById('source-select'),
+            startBtn: document.getElementById('start-btn'),
+            stopBtn: document.getElementById('stop-btn'),
+            cardContainer: document.getElementById('card-container'),
+            eventLog: document.getElementById('event-log'),
+            rawLog: document.getElementById('raw-log'),
+            tabs: document.querySelector('.tabs'),
+            sidebar: document.getElementById('sidebar'),
+            sidebarOverlay: document.getElementById('sidebar-overlay'),
+            settingsToggle: document.getElementById('settings-toggle'),
+            closeSidebar: document.getElementById('close-sidebar'),
+            statusIndicator: document.getElementById('status-indicator'),
+            statusText: document.getElementById('status-text')
+        };
+
+        let websocket;
+
+        elements.settingsToggle.addEventListener('click', () => {
+            elements.sidebar.classList.add('open');
+            elements.sidebarOverlay.classList.add('active');
+        });
+
+        elements.closeSidebar.addEventListener('click', () => {
+            elements.sidebar.classList.remove('open');
+            elements.sidebarOverlay.classList.remove('active');
+        });
+
+        elements.sidebarOverlay.addEventListener('click', () => {
+            elements.sidebar.classList.remove('open');
+            elements.sidebarOverlay.classList.remove('active');
+        });
+
+        const SENSOR_CONFIG = {
+            temperature: { label: "Temperatura", unit: "°C", fixed: 1 },
+            pressure: { label: "Pressão", unit: "kPa", fixed: 2, min: 90, max: 110 },
+            distance: { label: "Distância", unit: "mm", fixed: 1 },
+            ir_bread: { label: "Sensor Pão", unit: "" },
+            ir_hand: { label: "Sensor Mão", unit: "" }
+        };
+        
+        function generateCards() {
+            let sensorColumnHtml = '';
+            let mainCardsHtml = '';
+            
+            Object.keys(SENSOR_CONFIG).forEach(key => {
+                const config = SENSOR_CONFIG[key];
+                let cardHtml;
+
+                if (key === 'pressure') {
+                    cardHtml = `
+                        <div class="card">
+                            <div class="label">${config.label}</div>
+                            <div class="gauge-container">
+                                <div class="gauge-bg"></div>
+                                <div class="gauge-cover">
+                                    <div class="gauge-value-display">
+                                        <span class="value" id="val-pressure">-</span>
+                                        <span class="unit">${config.unit}</span>
+                                    </div>
+                                </div>
+                                <div class="gauge-needle" id="needle-pressure"></div>
+                            </div>
+                        </div>`;
+                    mainCardsHtml += cardHtml;
+                }
+                else if (key === 'ir_bread' || key === 'ir_hand') {
+                    sensorColumnHtml += `
+                        <div class="card">
+                            <div class="label">${config.label}</div>
+                            <div class="value" id="val-${key}">-</div>
+                            <div class="unit">${config.unit}</div>
+                        </div>`;
+                }
+                else {
+                    cardHtml = `
+                        <div class="card">
+                            <div class="label">${config.label}</div>
+                            <div class="value" id="val-${key}">-</div>
+                            <div class="unit">${config.unit}</div>
+                        </div>`;
+                    mainCardsHtml += cardHtml;
+                }
+            });
+            
+            elements.cardContainer.innerHTML = mainCardsHtml;
+            if (sensorColumnHtml) {
+                elements.cardContainer.innerHTML += `<div class="sensor-column">${sensorColumnHtml}</div>`;
+            }
+        }
+        generateCards(); // Gera os cards na inicialização
+
+        elements.tabs.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'BUTTON') return;
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.log-pane').forEach(pane => pane.classList.remove('active'));
+            e.target.classList.add('active');
+            document.getElementById(e.target.dataset.tab).classList.add('active');
+        });
+
+        function setUIStateToRunning(source) {
+            elements.stopBtn.disabled = false;
+            elements.startBtn.disabled = true;
+            elements.sourceSelect.disabled = true;
+            if (source) elements.sourceSelect.value = source;
+        }
+
+        function setUIStateToStopped() {
+            elements.stopBtn.disabled = true;
+            elements.startBtn.disabled = false;
+            elements.sourceSelect.disabled = false;
+        }
+        
+        function addLog(message, level = 'info') {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `<span class="timestamp">[${new Date().toLocaleTimeString()}]</span> <span class="message ${level.toLowerCase()}">${message}</span>`;
+            elements.eventLog.appendChild(logEntry);
+            elements.eventLog.scrollTop = elements.eventLog.scrollHeight;
+        }
+        
+        async function checkServerStatus() {
+            try {
+                addLog("Verificando status do servidor...", 'INFO');
+                const response = await fetch(`${elements.httpUrl.value}/status`);
+                const data = await response.json();
+                if (data.running) {
+                    addLog(`Servidor já está rodando a fonte '${data.source}'. Sincronizando UI.`, 'WARN');
+                    setUIStateToRunning(data.source);
+                } else {
+                    addLog("Servidor está parado. UI sincronizada.", 'INFO');
+                    setUIStateToStopped();
+                }
+            } catch (err) {
+                addLog(`ERRO ao verificar status do servidor: ${err.message}`, 'ERROR');
+            }
+        }
+
+        elements.connectBtn.addEventListener('click', () => {
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.close();
+            } else {
+                connectWS();
+            }
+        });
+
+        elements.startBtn.addEventListener('click', async () => {
+            const source = elements.sourceSelect.value;
+            const endpoint = `${elements.httpUrl.value}/${source}/start`;
+            const body = source === 'serial' ? { port: "COM7", baudrate: 9600 } : {};
+            addLog(`Tentando iniciar fonte '${source}'...`, 'INFO');
+            try {
+                const response = await fetch(endpoint, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify(body) 
+                });
+                if (!response.ok) throw new Error(`Servidor respondeu com erro! Status: ${response.status}`);
+                const data = await response.json();
+                if (!data.ok) throw new Error(data.detail || 'Servidor indicou uma falha ao iniciar.');
+                addLog(`Fonte '${source}' iniciada com sucesso.`, 'SUCCESS');
+                setUIStateToRunning(source);
+            } catch (err) {
+                addLog(`ERRO ao iniciar '${source}': ${err.message}`, 'ERROR');
+                setUIStateToStopped();
+            }
+        });
+
+        elements.stopBtn.addEventListener('click', async () => {
+            const source = elements.sourceSelect.value;
+            const endpoint = `${elements.httpUrl.value}/${source}/stop`;
+            addLog(`Tentando parar fonte '${source}'...`, 'INFO');
+            try {
+                const response = await fetch(endpoint, { method: 'POST' });
+                if (!response.ok) throw new Error(`Servidor respondeu com erro! Status: ${response.status}`);
+                addLog(`Comando para parar '${source}' enviado com sucesso.`, 'SUCCESS');
+            } catch (err) {
+                addLog(`ERRO ao enviar comando para parar: ${err.message}`, 'ERROR');
+            } finally {
+                addLog("Redefinindo interface para o estado 'Parado'.", 'INFO');
+                setUIStateToStopped();
+            }
+        });
+
+        function connectWS() {
+            websocket = new WebSocket(elements.wsUrl.value);
+            addLog(`Tentando conectar em ${elements.wsUrl.value}...`, 'INFO');
+            
+            websocket.onopen = () => {
+                addLog("Conexão WebSocket estabelecida com sucesso.", 'SUCCESS');
+                elements.connectBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    Desconectar WebSocket
+                `;
+                elements.statusIndicator.classList.add('connected');
+                elements.statusText.textContent = 'Conectado';
+                elements.statusText.classList.add('connected');
+                checkServerStatus();
+            };
+            
+            websocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.reading) updateUI(data.reading);
+                    const rawContent = `[${new Date().toLocaleTimeString()}]\n${JSON.stringify(data, null, 2)}\n\n`;
+                    elements.rawLog.textContent += rawContent;
+                    elements.rawLog.scrollTop = elements.rawLog.scrollHeight;
+                } catch (e) {
+                    addLog('WARN: Mensagem inválida recebida do WebSocket.', 'WARN');
+                }
+            };
+            
+            websocket.onclose = () => {
+                addLog("Conexão WebSocket fechada.", 'INFO');
+                elements.connectBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                        <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                        <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                    </svg>
+                    Conectar WebSocket
+                `;
+                elements.statusIndicator.classList.remove('connected');
+                elements.statusText.textContent = 'Desconectado';
+                elements.statusText.classList.remove('connected');
+                elements.startBtn.disabled = true;
+                elements.stopBtn.disabled = true;
+            };
+            
+            websocket.onerror = (err) => { 
+                addLog("ERRO CRÍTICO no WebSocket. Verifique o console.", 'ERROR'); 
+            };
+        }
+
+        function updateUI(reading) {
+            Object.keys(reading).forEach(key => {
+                if (key in SENSOR_CONFIG) {
+                    const el = document.getElementById(`val-${key}`);
+                    if (!el) return;
+                    let value = reading[key];
+
+                    if (typeof value === 'boolean') {
+                        el.textContent = value ? "DETECTADO" : "LIVRE";
+                    } else if (typeof value === 'number') {
+                        el.textContent = value.toFixed(SENSOR_CONFIG[key].fixed);
+                    } else {
+                        el.textContent = value;
+                    }
+                    
+                    if (key === 'temperature' && typeof value === 'number') {
+                        el.classList.remove('temp-cold', 'temp-normal', 'temp-hot', 'temp-critical');
+                        if (value < 18) el.classList.add('temp-cold');
+                        else if (value < 25) el.classList.add('temp-normal');
+                        else if (value < 32) el.classList.add('temp-hot');
+                        else el.classList.add('temp-critical');
+                    }
+                    
+                    if (key === 'pressure' && typeof value === 'number') {
+                        const needle = document.getElementById('needle-pressure');
+                        const config = SENSOR_CONFIG.pressure;
+                        const percentage = Math.max(0, Math.min(1, (value - config.min) / (config.max - config.min)));
+                        const angle = -90 + (percentage * 180);
+                        needle.style.transform = `translateX(-50%) rotate(${angle}deg)`;
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

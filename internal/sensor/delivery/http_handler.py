@@ -70,28 +70,60 @@ _fake_thread = None
 _fake_stop_event = None
 
 def _fake_loop(device_id: str, period: float, loop: asyncio.AbstractEventLoop):
-    t0 = time.time()
     print(f"[fake] iniciado device={device_id} period={period}s")
+    
+    # --- Parâmetros da nossa nova simulação ---
+    # Pressão de operação normal (ex: 1.85 bar)
+    BASE_PRESSURE_KPA = 185.0
+    # Flutuação normal da pressão (ex: +/- 0.05 bar)
+    PRESSURE_JITTER_KPA = 5.0
+    # Pressão máxima em um pico (ex: 2.5 bar)
+    MAX_SPIKE_PRESSURE_KPA = 250.0
+    # Chance de ocorrer um pico a cada segundo (ex: 8%)
+    SPIKE_CHANCE = 0.08
+
+    # Temperatura de operação
+    BASE_TEMP_C = 190.0
+    TEMP_JITTER_C = 3.0
+    
     try:
         while not _fake_stop_event.is_set():
-            t = time.time() - t0
-            temperatura = round(170 + 20*math.sin(t/15) + random.uniform(-0.8, 0.8), 2)
-            pressao_kpa = round(200 + 50*math.sin(t/20) + random.uniform(-2, 2), 2)
-            distancia   = round(300 + 30*math.sin(t/10) + random.uniform(-3, 3), 1)
-            ir_pao = 1 if (int(t) % 7 == 0 or random.random() < 0.05) else 0
-            ir_mao = 1 if (int(t) % 13 == 0 or random.random() < 0.03) else 0
+            # --- Nova Lógica de Simulação de Pressão ---
+            # Começa com a pressão base e adiciona uma flutuação normal
+            pressao_kpa = BASE_PRESSURE_KPA + random.uniform(-PRESSURE_JITTER_KPA, PRESSURE_JITTER_KPA)
+            
+            # Verifica se um pico de pressão deve ocorrer
+            if random.random() < SPIKE_CHANCE:
+                # Se ocorrer, o valor sobe para algo entre a pressão normal e o máximo
+                pressao_kpa = random.uniform(BASE_PRESSURE_KPA, MAX_SPIKE_PRESSURE_KPA)
 
+            # --- Lógica de Simulação de Temperatura (também melhorada) ---
+            temperatura = BASE_TEMP_C + random.uniform(-TEMP_JITTER_C, TEMP_JITTER_C)
+
+            # --- Sensores Digitais (ir_bread, ir_hand) ---
+            ir_pao = random.random() < 0.15 # 15% de chance de detectar pão
+            ir_mao = random.random() < 0.05  # 5% de chance de detectar mão
+
+            # Simulação da distância continua aleatória
+            distancia = 300.0 + random.uniform(-30.0, 30.0)
+
+            # Monta o pacote de leitura com valores arredondados
             reading = {
                 "device_id": device_id,
-                "temperature": temperatura,
-                "pressure": pressao_kpa,
-                "distance": distancia,
-                "ir_bread": bool(ir_pao),
-                "ir_hand":  bool(ir_mao),
+                "temperature": round(temperatura, 2),
+                "pressure": round(pressao_kpa, 2),
+                "distance": round(distancia, 1),
+                "ir_bread": ir_pao,
+                "ir_hand":  ir_mao,
             }
+
             payload = {"event": "ingest", "reading": reading}
-            loop.call_soon_threadsafe(asyncio.create_task, _broadcast(payload))
+            # Usa a forma segura para chamar uma corrotina a partir de uma thread
+            future = asyncio.run_coroutine_threadsafe(_broadcast(payload), loop)
+            future.result() # Espera o broadcast concluir para evitar sobrecarga
+
             time.sleep(period)
+            
     finally:
         print("[fake] parado")
 
@@ -200,3 +232,17 @@ async def serial_stop():
     _serial_thread.join(timeout=2.0)
     _serial_thread = None
     return {"ok": True, "stopped": True}
+
+
+# Adicione este novo endpoint no seu arquivo http_handler.py
+
+@router.get("/status")
+async def get_status():
+    """Verifica e retorna o estado atual dos processos de dados."""
+    if _fake_thread and _fake_thread.is_alive():
+        return {"running": True, "source": "fake"}
+    
+    if _serial_thread and _serial_thread.is_alive():
+        return {"running": True, "source": "serial"}
+    
+    return {"running": False, "source": None}
