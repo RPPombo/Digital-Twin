@@ -20,7 +20,7 @@ Componentes principais:
     | Sensor Ultrassônico              | HC-SR04      | 1              |
     | Sensor de Reflexão Infravermelho | TCRT-5000    | 2              |
     | Termopar                         | Tipo K       | 1              |
-    | Sensor de Distância              | XGZP701DBR1R | 1              |
+    | Sensor de Pressão                | XGZP701DBR1R | 1              |
 
 
 Os sensores recebem informções sobre a temperatura do "carimbo", a posição da prensa, pressão do sistema, verificação de pão abaixo da prensa e verificação de mão para segurança do utilizador.
