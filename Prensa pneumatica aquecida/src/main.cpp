@@ -122,7 +122,14 @@ void loop() {
 
   // --- Pressão ---
   int leituraPressao = analogRead(PRESSAO);
-  float pressao = leituraPressao * 0.08; 
+
+  const float VREF_ADC = 5.0;            
+  float Vadc   = (leituraPressao / 1023.0) * VREF_ADC;
+
+  // Remove o offset do AD620 (REF ajustado no trimpot ~2,50 V)
+  const float VREF_AD620 = 2.50;         // ajuste se você setar outro
+  float Vsinal = Vadc - VREF_AD620;      // volts "úteis" para a calibração
+  
 
   // --- Sensores IR ---
   bool pao = (digitalRead(IR_PAO) == LOW);  // se seu IR for ativo em LOW, inverta
@@ -173,7 +180,7 @@ void loop() {
   Serial.print("{");
   Serial.print("\"timestamp_ms\":"); Serial.print(agora); Serial.print(",");
   Serial.print("\"temperatura_C\":"); Serial.print(temperatura, 2); Serial.print(",");
-  Serial.print("\"pressao_un\":"); Serial.print(pressao, 2); Serial.print(",");
+  Serial.print("\"pressao_volts\":"); Serial.print(leituraPressao, 2); Serial.print(",");
   Serial.print("\"IR_pao\":"); Serial.print(pao ? "true" : "false"); Serial.print(",");
   Serial.print("\"IR_mao\":"); Serial.print(mao ? "true" : "false"); Serial.print(",");
   Serial.print("\"distancia_mm\":");
