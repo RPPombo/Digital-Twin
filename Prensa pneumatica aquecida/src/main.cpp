@@ -180,11 +180,10 @@ void loop() {
   Serial.print("{");
   Serial.print("\"timestamp_ms\":"); Serial.print(agora); Serial.print(",");
   Serial.print("\"temperatura_C\":"); Serial.print(temperatura, 2); Serial.print(",");
-  Serial.print("\"pressao_volts\":"); Serial.print(leituraPressao, 2); Serial.print(",");
+  Serial.print("\"pressao_volts\":"); Serial.print(Vsinal, 5); Serial.print(",");
   Serial.print("\"IR_pao\":"); Serial.print(pao ? "true" : "false"); Serial.print(",");
   Serial.print("\"IR_mao\":"); Serial.print(mao ? "true" : "false"); Serial.print(",");
   Serial.print("\"distancia_mm\":");
   if (distancia_mm < 0) Serial.print("null"); else Serial.print(distancia_mm, 1);
   Serial.println("}");
-  delay(500);
 }
