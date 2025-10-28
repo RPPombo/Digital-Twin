@@ -10,6 +10,12 @@ try:
 except Exception:
     serial = None
 
+try:
+    from serial.tools import list_ports
+except Exception:
+    list_ports = None
+
+
 router = APIRouter()
 
 # =============================================================================
@@ -40,6 +46,43 @@ async def _broadcast(msg: dict):
         _clients_all.discard(ws)
         for s in _subs.values():
             s.discard(ws)
+
+@router.get("/serial/ports")
+async def serial_list_ports():
+    """
+    Lista portas seriais disponíveis no sistema (Windows/macOS/Linux).
+    Retorna metadados úteis (vid/pid, fabricante, produto, etc) quando disponíveis.
+    """
+    if list_ports is None:
+        # pyserial não disponível ou sem submódulo
+        raise HTTPException(500, "Dependência ausente: instale pyserial (pip install pyserial).")
+
+    try:
+        ports = list_ports.comports()
+    except Exception as e:
+        raise HTTPException(500, f"Falha ao enumerar portas seriais: {e}")
+
+    out = []
+    for p in ports:
+        # Campos comuns; alguns podem vir None dependendo do SO/driver
+        out.append({
+            "device": getattr(p, "device", None),                # ex: COM3 (Win) /dev/tty.usbserial-xxx (mac) /dev/ttyUSB0 (Linux)
+            "name": getattr(p, "name", None),
+            "description": getattr(p, "description", None),
+            "hwid": getattr(p, "hwid", None),
+            "manufacturer": getattr(p, "manufacturer", None),
+            "product": getattr(p, "product", None),
+            "interface": getattr(p, "interface", None),
+            "serial_number": getattr(p, "serial_number", None),
+            "vid": getattr(p, "vid", None),
+            "pid": getattr(p, "pid", None),
+            "location": getattr(p, "location", None),
+        })
+    # Ordena por nome do device para ficar estável
+    out.sort(key=lambda d: (d["device"] or ""))
+
+    return {"ok": True, "count": len(out), "ports": out}
+
 
 @router.websocket("/sensor/ws")
 async def ws(ws: WebSocket):

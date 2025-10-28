@@ -92,60 +92,38 @@ class SerialReader:
                 await asyncio.sleep(2)
 
     async def _emit_from_json(self, data: dict):
-        # Campos esperados do seu sketch:
-        ts_ms = data.get("timestamp_ms")  # se quiser usar depois
-
         # temperatura (suaviza)
         if "temperatura_C" in data:
             val = _to_float(data["temperatura_C"])
             val = self._smooth("temperature", val)
             await self.usecase.ingest(SensorReading(
-                device_id=self.device_id,
-                sensor="temperature",
-                value=val,
-                unit="C"
+                device_id=self.device_id, sensor="temperature", value=val, unit="C"
             ))
 
-        # pressão (calibra -> suaviza)
-        if "pressao_raw" in data or "pressao_volts" in data or "pressao_kPa" in data:
-            if "pressao_raw" in data:
-                raw_counts = _to_float(data["pressao_raw"])
-                # Calibração em 'counts' (a,b devem ter sido ajustados para counts)
-                p_kpa = CAL_PRESSURE.apply(raw_counts)
-
-            elif "pressao_volts" in data:
-                v = _to_float(data["pressao_volts"])  # volts sem offset
-                p_kpa = CAL_PRESSURE.apply(v)         # calibrado (a*v + b)
-                p_kpa = self._smooth("pressure", p_kpa)
-
+        # PRESSÃO: prioriza 'pressao_volts' -> calibra (a*v+b) -> suaviza -> kPa
+        if "pressao_volts" in data or "pressao_kPa" in data:
+            if "pressao_volts" in data:
+                v_volts = _to_float(data["pressao_volts"])  # volts úteis (offset já subtraído no Arduino)
+                p_kpa = CAL_PRESSURE.apply(v_volts)         # volts -> kPa (a*v + b)
             else:
-                # Se ainda estiver vindo em kPa do Arduino (transição), não recalibre.
+                # compatibilidade: se vier calibrado do Arduino, só repassa
                 p_kpa = _to_float(data["pressao_kPa"])
 
-            # Suaviza depois
+            # suaviza UMA vez aqui
             p_kpa = self._smooth("pressure", p_kpa)
 
             await self.usecase.ingest(SensorReading(
-                device_id=self.device_id,
-                sensor="pressure",
-                value=p_kpa,
-                unit="kPa"
+                device_id=self.device_id, sensor="pressure", value=p_kpa, unit="kPa"
             ))
 
         # IR (pão / mão) -> binário 0/1, sem suavização
         if "IR_pao" in data:
             await self.usecase.ingest(SensorReading(
-                device_id=self.device_id,
-                sensor="ir_bread",
-                value=float(data["IR_pao"]),
-                unit=None
+                device_id=self.device_id, sensor="ir_bread", value=float(data["IR_pao"]), unit=None
             ))
         if "IR_mao" in data:
             await self.usecase.ingest(SensorReading(
-                device_id=self.device_id,
-                sensor="ir_hand",
-                value=float(data["IR_mao"]),
-                unit=None
+                device_id=self.device_id, sensor="ir_hand", value=float(data["IR_mao"]), unit=None
             ))
 
         # distância (suaviza)
@@ -153,11 +131,9 @@ class SerialReader:
             val = _to_float(data["distancia_mm"])
             val = self._smooth("distance", val)
             await self.usecase.ingest(SensorReading(
-                device_id=self.device_id,
-                sensor="distance",
-                value=val,
-                unit="mm"
+                device_id=self.device_id, sensor="distance", value=val, unit="mm"
             ))
+
 
     async def _emit_from_brackets(self, line: str):
         # Ex: [ts] [TEMPERATURA] [VALUE: 110]

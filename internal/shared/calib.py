@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 
 @dataclass
-class LinCal:  # calibração linear
+class LinearCalibration:  # calibração linear
     a: float
     b: float
-    def apply(self, raw: float) -> float:
-        return self.a * raw + self.b
+    def apply(self, v: float) -> float:
+        """Retorna pressão em kPa a partir da tensão útil (V)."""
+        return self.a * v + self.b
 
-# exemplo: carregar de um JSON
-CAL_PRESSURE = LinCal(a=0.01234, b=-1.23)  # <- substitua pelos seus coeficientes
+# Calibração obtida em bancada (1–4 bar)
+CAL_PRESSURE = LinearCalibration(a=10000.0, b=-5000.0)
