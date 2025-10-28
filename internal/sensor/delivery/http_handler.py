@@ -4,6 +4,14 @@ from starlette.websockets import WebSocketState
 from collections import defaultdict
 import asyncio, json, time, threading, random, math
 
+from internal.shared.calib import CAL_PRESSURE  # a mesma calib do SerialReader
+
+def _to_float(v):
+    try:
+        return float(v)
+    except Exception:
+        return float("nan")
+
 # =============== opcional (serial real) ===============
 try:
     import serial  # pip install pyserial
@@ -216,24 +224,41 @@ def _serial_loop(port: str, baud: int, device_id: str, loop: asyncio.AbstractEve
             line = ser.readline()
             if not line:
                 continue
+
             try:
                 data = json.loads(line.decode(errors="ignore").strip())
             except Exception:
-                continue  # ignora linhas não-JSON
+                # linha não-JSON (ou parcial) — ignora
+                continue
 
-            # normaliza chaves comuns do Arduino
+            # --- PRESSÃO: prioriza kPa; se vier em volts, converte ---
+            kpa = None
+            if "pressao_kPa" in data:
+                kpa = _to_float(data["pressao_kPa"])
+            elif "pressao_kpa" in data:
+                kpa = _to_float(data["pressao_kpa"])
+            elif "pressure" in data:  # compat, assumindo já em kPa
+                kpa = _to_float(data["pressure"])
+            elif "pressao_volts" in data:  # Arduino real (volts)
+                v = _to_float(data["pressao_volts"])
+                if not math.isnan(v):
+                    kpa = CAL_PRESSURE.apply(v)  # aplica a*v + b
+
             reading = {
                 "device_id": device_id,
                 "temperature": data.get("temperatura_C") or data.get("temperature"),
-                "pressure":    data.get("pressao_un")    or data.get("pressure"),
+                "pressao_kPa": kpa,  # sempre publicamos essa chave no WS
                 "distance":    data.get("distancia_mm")  or data.get("distance"),
                 "ir_bread":    data.get("IR_pao") if "IR_pao" in data else data.get("ir_bread"),
                 "ir_hand":     data.get("IR_mao") if "IR_mao" in data else data.get("ir_hand"),
             }
-            reading = {k:v for k,v in reading.items() if v is not None}
+            # remove nulos para não poluir o payload
+            reading = {k: v for k, v in reading.items() if v is not None}
 
             payload = {"event": "ingest", "reading": reading}
+            # envia de forma thread-safe para o loop async
             loop.call_soon_threadsafe(asyncio.create_task, _broadcast(payload))
+
     finally:
         try:
             ser.close()
@@ -241,7 +266,7 @@ def _serial_loop(port: str, baud: int, device_id: str, loop: asyncio.AbstractEve
             pass
         _serial_port_opened = None
         print("[serial] fechado")
-
+        
 @router.post("/serial/start")
 async def serial_start(body: dict = Body(...)):
     """
