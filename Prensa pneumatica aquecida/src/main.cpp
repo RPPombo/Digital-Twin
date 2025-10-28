@@ -163,7 +163,7 @@ void loop() {
 
   // --- Ação da válvula: 2s aberta + 10s cooldown ---
   if (!valvulaAberta && (agora - cooldown > 10000) && acionar) {
-    if (pao && !mao && temperatura_ideal && retraido) {
+    if (pao && !mao && retraido) {
       digitalWrite(RELE_VALVULA, LOW); // abre (ativo em LOW)
       tempo_salvo = agora;
       valvulaAberta = true;
