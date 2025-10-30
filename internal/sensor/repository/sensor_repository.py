@@ -22,6 +22,7 @@ class SensorRepository:
             w = csv.writer(f)
             if new: w.writerow(["ts","value","unit"])
             w.writerow([r.ts.isoformat(), r.value, r.unit or ""])
+        print(f"[repo] wrote {p}: {r.ts.isoformat()} {r.value} {r.unit or ''}")
     
     def get_all_last(self, device_id: str):
         """Retorna uma lista com as últimas leituras (1 por sensor) do device informado."""
