@@ -155,14 +155,12 @@ void loop() {
   } else if (temperatura >= 185.0) {
     aquecedorLigado = false;
   }
-  digitalWrite(RELE_AQUECEDOR, aquecedorLigado ? LOW : HIGH);
-  bool temperatura_ideal = !aquecedorLigado;
-
+  
   // --- Acionamento do botão ---
   acionar = (digitalRead(BOTAO) == LOW);
 
   // --- Ação da válvula: 2s aberta + 10s cooldown ---
-  if (!valvulaAberta && (agora - cooldown > 10000) && acionar) {
+  if (!valvulaAberta && (agora - cooldown > 5000) && acionar) {
     if (pao && !mao && retraido) {
       digitalWrite(RELE_VALVULA, LOW); // abre (ativo em LOW)
       tempo_salvo = agora;
@@ -186,4 +184,5 @@ void loop() {
   Serial.print("\"distancia_mm\":");
   if (distancia_mm < 0) Serial.print("null"); else Serial.print(distancia_mm, 1);
   Serial.println("}");
+  delay(280);
 }
