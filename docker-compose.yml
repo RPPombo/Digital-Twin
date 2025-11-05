@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: digital-twin-api
+    ports:
+      - "4000:4000"
+    volumes:
+      - .:/app
+    devices:
+      - "/dev/tty.usbserial-10:/dev/tty.usbserial-10"x`
+    command: uvicorn cmd.main:app --host 0.0.0.0 --port 4000 --reload

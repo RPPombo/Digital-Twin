@@ -242,6 +242,10 @@ def _serial_loop(port: str, baud: int, device_id: str, loop: asyncio.AbstractEve
 
             temp = data.get("temperatura_C") or data.get("temperature")
             dist = data.get("distancia_mm") or data.get("distance")
+            if dist is None:
+                dist = data.get("distance")
+            if dist is None:
+                dist = -1.0
             ir_bread = data.get("IR_pao") if "IR_pao" in data else data.get("ir_bread")
             ir_hand  = data.get("IR_mao") if "IR_mao" in data else data.get("ir_hand")
 
