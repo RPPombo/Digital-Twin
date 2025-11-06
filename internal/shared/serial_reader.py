@@ -3,9 +3,9 @@ import os
 import re
 import json
 import serial
-import serial.asyncio
+import serial_asyncio
 from typing import Any, Dict
-
+import math 
 from internal.sensor.domain.sensor_model import SensorReading
 from internal.shared.filter import SensorFilter  # usamos um filtro por sensor
 from internal.shared.calib import CAL_PRESSURE
@@ -51,18 +51,23 @@ class SerialReader:
         """Aplica média móvel por sensor (se habilitado)."""
         if not self._filter_enabled:
             return value
+        # NÃO alimente o filtro com NaN (propaga NaN, mas não estraga o estado interno)
+        if isinstance(value, float) and math.isnan(value):
+            return value
         f = self._filters.get(sensor)
         if f is None:
             f = SensorFilter(window_size=self._filter_window)
             self._filters[sensor] = f
         return f.add(value)
 
+
     async def run(self):
         while True:
             try:
-                reader, _ = await serial.asyncio.open_serial_connection(
+                reader, _ = await serial_asyncio.open_serial_connection(  # <- aqui
                     url=self.port, baudrate=self.baud
                 )
+
                 while True:
                     raw = await reader.readline()
                     if not raw:
@@ -75,7 +80,7 @@ class SerialReader:
                     # ---- Formato 1: JSON do Arduino
                     if line.startswith("{"):
                         try:
-                            data = json.loads(line)
+                            data = json.loads(line, parse_constant =float)
                             await self._emit_from_json(data)
                         except Exception as e:
                             print("JSON parse error:", e, "|", line)
@@ -92,51 +97,71 @@ class SerialReader:
                 await asyncio.sleep(2)
 
     async def _emit_from_json(self, data: dict):
-        # temperatura (suaviza)
+        # temperatura
         if "temperatura_C" in data:
-            val = _to_float(data["temperatura_C"])
-            val = self._smooth("temperature", val)
-            await self.usecase.ingest(SensorReading(
-                device_id=self.device_id, sensor="temperature", value=val, unit="C"
-            ))
+            try:
+                val = _to_float(data["temperatura_C"])
+                val = self._smooth("temperature", val)
+                await self.usecase.ingest(SensorReading(
+                    device_id=self.device_id, sensor="temperature", value=val, unit="C"
+                ))
+            except Exception as e:
+                print("ingest temperature error:", e)
 
-        # PRESSÃO: prioriza 'pressao_volts' -> calibra (a*v+b) -> suaviza -> kPa
+        # pressão
         if "pressao_volts" in data or "pressao_kPa" in data:
-            if "pressao_volts" in data:
-                v_volts = _to_float(data["pressao_volts"])  # volts úteis (offset já subtraído no Arduino)
-                p_kpa = CAL_PRESSURE.apply(v_volts)         # volts -> kPa (a*v + b)
-            else:
-                # compatibilidade: se vier calibrado do Arduino, só repassa
-                p_kpa = _to_float(data["pressao_kPa"])
+            try:
+                if "pressao_volts" in data:
+                    v = _to_float(data["pressao_volts"])
+                    if isinstance(v, float) and math.isnan(v):
+                        p_kpa = float("nan")
+                    else:
+                        p_kpa = CAL_PRESSURE.apply(v)
+                else:
+                    p_kpa = _to_float(data["pressao_kPa"])
 
-            # suaviza UMA vez aqui
-            p_kpa = self._smooth("pressure", p_kpa)
+                p_kpa = self._smooth("pressure", p_kpa)
+                await self.usecase.ingest(SensorReading(
+                    device_id=self.device_id, sensor="pressure", value=p_kpa, unit="kPa"
+                ))
+            except Exception as e:
+                print("ingest pressure error:", e)
 
-            await self.usecase.ingest(SensorReading(
-                device_id=self.device_id, sensor="pressure", value=p_kpa, unit="kPa"
-            ))
-
-        # IR (pão / mão) -> binário 0/1, sem suavização
+        # IR (binário)
         if "IR_pao" in data:
-            await self.usecase.ingest(SensorReading(
-                device_id=self.device_id, sensor="ir_bread", value=float(data["IR_pao"]), unit=None
-            ))
-        if "IR_mao" in data:
-            await self.usecase.ingest(SensorReading(
-                device_id=self.device_id, sensor="ir_hand", value=float(data["IR_mao"]), unit=None
-            ))
+            try:
+                v = _to_float(data["IR_pao"])
+                v = 1.0 if (isinstance(v, float) and not math.isnan(v) and v > 0.5) else 0.0
+                await self.usecase.ingest(SensorReading(
+                    device_id=self.device_id, sensor="ir_bread", value=v, unit=None
+                ))
+            except Exception as e:
+                print("ingest ir_bread error:", e)
 
-        # distância (suaviza)
+        if "IR_mao" in data:
+            try:
+                v = _to_float(data["IR_mao"])
+                v = 1.0 if (isinstance(v, float) and not math.isnan(v) and v > 0.5) else 0.0
+                await self.usecase.ingest(SensorReading(
+                    device_id=self.device_id, sensor="ir_hand", value=v, unit=None
+                ))
+            except Exception as e:
+                print("ingest ir_hand error:", e)
+
+
+        # distância
         if "distancia_mm" in data:
-            val = _to_float(data["distancia_mm"])
-            val = self._smooth("distance", val)
-            await self.usecase.ingest(SensorReading(
-                device_id=self.device_id, sensor="distance", value=val, unit="mm"
-            ))
+            try:
+                val = _to_float(data["distancia_mm"])
+                val = self._smooth("distance", val)
+                await self.usecase.ingest(SensorReading(
+                    device_id=self.device_id, sensor="distance", value=val, unit="mm"
+                ))
+            except Exception as e:
+                print("ingest distance error:", e)
 
 
     async def _emit_from_brackets(self, line: str):
-        # Ex: [ts] [TEMPERATURA] [VALUE: 110]
         parts = BRACKET_RE.findall(line)
         if len(parts) < 3:
             return
@@ -147,16 +172,18 @@ class SerialReader:
         sensor_norm = self._normalize_sensor(sensor_label)
         val = _to_float(value_str)
 
-        # Suaviza apenas sensores contínuos
         if sensor_norm in {"temperature", "pressure", "distance", "humidity"}:
             val = self._smooth(sensor_norm, val)
 
-        await self.usecase.ingest(SensorReading(
-            device_id=self.device_id,
-            sensor=sensor_norm,
-            value=val,
-            unit=None
-        ))
+        try:
+            await self.usecase.ingest(SensorReading(
+                device_id=self.device_id,
+                sensor=sensor_norm,
+                value=val,
+                unit=None
+            ))
+        except Exception as e:
+            print(f"ingest {sensor_norm} error:", e)
 
     
 

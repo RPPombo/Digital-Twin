@@ -21,6 +21,8 @@ import { useGLTF } from "@react-three/drei"
 import { PressMachineScene } from "./press-machine-scene"
 import Screen_Test from "./screen_test"
 import test from "node:test"
+import { ErrorBoundary } from "./ErrorBoundary"
+
 
 
 
@@ -334,6 +336,8 @@ useEffect(() => {
         <div className="flex-1">
           <MacOSWindow title="Digital Twin">
             <div className="w-full h-[600px] bg-[#0f0f0f]/60 rounded-2xl border border-gray-700 shadow-xl overflow-hidden relative">
+              <ErrorBoundary fallback={<div className="p-4 text-sm text-red-300">Falha ao carregar assets 3D.</div>}>
+
               <Canvas camera={{ fov: 45 }}>
                 <CameraSync position={cameraPosition} autoFollow={autoFollow} />
 
@@ -343,7 +347,7 @@ useEffect(() => {
                 <Suspense fallback={null}>
                   <PressMachineScene />
                   {/* <Screen_Test/> */}
-                  <Environment preset="city" />
+                  <Environment files="/hdr/potsdamer_platz_1k.hdr" background />
                 </Suspense>
 
                 <OrbitControls
@@ -354,6 +358,8 @@ useEffect(() => {
                   onStart={() => setAutoFollow(false)}
                 />
               </Canvas>
+
+              </ErrorBoundary>
               <CameraControlPanel
                 cameraPosition={cameraPosition}
                 setCameraPosition={setCameraPosition}

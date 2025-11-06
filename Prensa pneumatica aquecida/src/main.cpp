@@ -155,7 +155,11 @@ void loop() {
   } else if (temperatura >= 185.0) {
     aquecedorLigado = false;
   }
-  
+  digitalWrite(RELE_AQUECEDOR, aquecedorLigado ? LOW : HIGH);
+
+
+
+
   // --- Acionamento do botão ---
   acionar = (digitalRead(BOTAO) == LOW);
 

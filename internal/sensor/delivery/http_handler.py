@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 import asyncio, json, time, threading, random, math
 import os
+from time import monotonic
 
 
 from internal.sensor.domain.sensor_model import SensorReading
@@ -40,6 +41,45 @@ def _to_float(v):
 # =============================================================================
 _clients_all = set()
 _subs = defaultdict(set)
+_ws_state = {} 
+
+MAX_FPS = 20          # máx 20 envios/s por cliente
+MIN_DT = 1.0 / MAX_FPS
+
+async def _safe_send(ws: WebSocket, payload: dict):
+    st = _ws_state.get(ws)
+    if not st:  # já desconectou
+        return
+    # rate limit simples
+    now = monotonic()
+    wait = max(0.0, MIN_DT - (now - st["last_sent"]))
+    if wait:
+        await asyncio.sleep(wait)
+
+    async with st["lock"]:
+        if ws.client_state.name != "CONNECTED":
+            return
+        try:
+            await ws.send_json(payload)
+            st["last_sent"] = monotonic()
+        except Exception:
+            # desconectou ou erro de envio
+            await _cleanup_ws(ws)
+async def _heartbeat(ws: WebSocket):
+    try:
+        while True:
+            await asyncio.sleep(30)
+            await _safe_send(ws, {"type": "keepalive"})
+    except asyncio.CancelledError:
+        pass
+
+async def _cleanup_ws(ws: WebSocket):
+    _clients_all.discard(ws)
+    for s in _subs.values():
+        s.discard(ws)
+    task = _ws_state.pop(ws, {}).get("hb_task")
+    if task:
+        task.cancel()
 
 async def _broadcast(msg: dict):
     did = (msg.get("reading") or {}).get("device_id") or msg.get("device_id")
@@ -47,21 +87,16 @@ async def _broadcast(msg: dict):
     if did and did in _subs:
         targets |= _subs[did]
 
-    payload = json.dumps(msg)
-    dead = []
+    # Envia com _safe_send (lock + rate limit)
+    to_cleanup = []
     for ws in list(targets):
         try:
-            if ws.application_state == WebSocketState.CONNECTED:
-                await ws.send_text(payload)
-            else:
-                dead.append(ws)
+            await _safe_send(ws, msg)   # <- manda dict; _safe_send já usa send_json
         except Exception:
-            dead.append(ws)
+            to_cleanup.append(ws)
 
-    for ws in dead:
-        _clients_all.discard(ws)
-        for s in _subs.values():
-            s.discard(ws)
+    for ws in to_cleanup:
+        await _cleanup_ws(ws)
 
 @router.get("/serial/ports")
 async def serial_list_ports():
@@ -91,26 +126,33 @@ async def serial_list_ports():
     return {"ok": True, "count": len(out), "ports": out}
 
 @router.websocket("/sensor/ws")
-async def ws(ws: WebSocket):
+async def ws_handler(ws: WebSocket):
     await ws.accept()
+    _ws_state[ws] = {"lock": asyncio.Lock(), "last_sent": 0.0, "hb_task": None}
+
     q = ws.query_params.get("device_id")
     if q:
         for did in q.split(","):
             _subs[did.strip()].add(ws)
-        await ws.send_json({"status": "connected", "filter": q})
+        await _safe_send(ws, {"status": "connected", "filter": q})
     else:
         _clients_all.add(ws)
-        await ws.send_json({"status": "connected", "filter": "all"})
+        await _safe_send(ws, {"status": "connected", "filter": "all"})
+
+    # heartbeat em task separada
+    _ws_state[ws]["hb_task"] = asyncio.create_task(_heartbeat(ws))
+
     try:
-        while True:
-            try:
-                await asyncio.wait_for(ws.receive_text(), timeout=30)
-            except asyncio.TimeoutError:
-                await ws.send_json({"type": "keepalive"})
+        # Consome frames do cliente (se ele nunca mandar nada, fica só no heartbeat)
+        async for _ in ws.iter_text():
+            pass
     except WebSocketDisconnect:
-        _clients_all.discard(ws)
-        for s in _subs.values():
-            s.discard(ws)
+        pass
+    except Exception:
+        # Loga se quiser
+        pass
+    finally:
+        await _cleanup_ws(ws)
 
 # =============================================================================
 # FAKE: start/stop (thread que gera leituras, persiste e faz broadcast)
@@ -271,15 +313,18 @@ def _serial_loop(port: str, baud: int, device_id: str, loop: asyncio.AbstractEve
                         loop
                     ).result(timeout=2)
                 if ir_bread is not None:
+                    v = _to_float(ir_bread)
                     asyncio.run_coroutine_threadsafe(
                         usecase.ingest(SensorReading(device_id=device_id, sensor="ir_bread",
-                                                     value=1.0 if bool(ir_bread) else 0.0, unit=None, ts=now)),
+                                                    value=1.0 if v > 0.5 else 0.0, unit=None, ts=now)),
                         loop
                     ).result(timeout=2)
+
                 if ir_hand is not None:
+                    v = _to_float(ir_hand)
                     asyncio.run_coroutine_threadsafe(
                         usecase.ingest(SensorReading(device_id=device_id, sensor="ir_hand",
-                                                     value=1.0 if bool(ir_hand) else 0.0, unit=None, ts=now)),
+                                                    value=1.0 if v > 0.5 else 0.0, unit=None, ts=now)),
                         loop
                     ).result(timeout=2)
             except Exception as e:
