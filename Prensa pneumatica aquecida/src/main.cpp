@@ -119,6 +119,7 @@ void loop() {
     g = 100 - (100 * fator);
     b = 0;
   }
+  setColor(r,g,b);
 
   // --- Pressão ---
   int leituraPressao = analogRead(PRESSAO);
@@ -130,7 +131,6 @@ void loop() {
   const float VREF_AD620 = 2.50;         // ajuste se você setar outro
   float Vsinal = Vadc - VREF_AD620;      // volts "úteis" para a calibração
   
-
   // --- Sensores IR ---
   bool pao = (digitalRead(IR_PAO) == LOW);  // se seu IR for ativo em LOW, inverta
   int  leituramao = analogRead(IR_MAO);
@@ -150,15 +150,12 @@ void loop() {
   }
 
   // --- Controle de temperatura com histerese ---
-  if (temperatura < 180.0) {
+  if (temperatura < 140.0) {
     aquecedorLigado = true;
-  } else if (temperatura >= 185.0) {
+  } else if (temperatura >= 150.0) {
     aquecedorLigado = false;
   }
   digitalWrite(RELE_AQUECEDOR, aquecedorLigado ? LOW : HIGH);
-
-
-
 
   // --- Acionamento do botão ---
   acionar = (digitalRead(BOTAO) == LOW);
