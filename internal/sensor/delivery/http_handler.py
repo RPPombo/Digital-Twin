@@ -30,12 +30,6 @@ try:
     from serial.tools import list_ports
 except Exception:
     list_ports = None
-def _to_float(v):
-    try:
-        return float(v)
-    except Exception:
-        return float("nan")
-
 # =============================================================================
 # WS: assinatura por device + broadcast
 # =============================================================================
@@ -411,3 +405,11 @@ def debug_tail(request: Request, device_id: str = "sim-arduino-01", sensor: str 
     with open(p, "r", encoding="utf-8") as f:
         lines = f.readlines()[-n:]
     return {"file": p, "exists": True, "last_lines": [ln.rstrip("\n") for ln in lines]}
+
+# ---- exporter para outros módulos (ex.: main.py / replayer) ----
+def get_broadcaster():
+    """
+    Retorna o coroutine _broadcast(msg: dict) para ser usado por outros módulos.
+    Ex.: broadcaster = get_broadcaster(); await broadcaster({...})
+    """
+    return _broadcast

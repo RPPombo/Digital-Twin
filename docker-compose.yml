@@ -4,10 +4,32 @@ services:
   api:
     build: .
     container_name: digital-twin-api
+
+    # Carrega variáveis do .env
+    env_file:
+      - .env
+
     ports:
       - "4000:4000"
+
+    # Monta código e dados
     volumes:
       - .:/app
+      - ./data:/app/data
+
+    # 🔌 Acesso à porta serial (ajuste conforme o seu device)
+    # Use `ls /dev/tty.*` no Mac para ver qual porta é a do Arduino.
+    # Exemplos comuns:
+    #   /dev/tty.usbserial-10
+    #   /dev/tty.usbmodem14201
+    # Troque abaixo pelo nome exato que aparecer no seu sistema:
     devices:
-      - "/dev/tty.usbserial-10:/dev/tty.usbserial-10"x`
-    command: uvicorn cmd.main:app --host 0.0.0.0 --port 4000 --reload
+      - "/dev/tty.usbserial-10:/dev/tty.usbserial-10"
+
+    command: >
+      sh -c "
+      uvicorn cmd.main:app
+      --host ${APP_HOST:-0.0.0.0}
+      --port ${APP_PORT:-4000}
+      $( [ \"${APP_RELOAD}\" = \"true\" ] && echo --reload )
+      "
