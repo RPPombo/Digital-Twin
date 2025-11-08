@@ -13,6 +13,26 @@ from internal.shared.calib import CAL_PRESSURE
 
 BRACKET_RE = re.compile(r"\[(.*?)\]")  # para o formato [..][..][..]
 
+PRESS_V_MIN = 0.11   # 100 kPa
+PRESS_V_MAX = 0.17   # 250 kPa
+PRESS_K_MIN = 100.0
+PRESS_K_MAX = 250.0
+# tolerância para rejeitar ruído de borda (em volts)
+PRESS_V_TOL = 0.005  # 5 mV
+
+# passo máximo permitido (em kPa) entre amostras
+SERIAL_PRESS_MAX_STEP = float(os.getenv("SERIAL_PRESS_MAX_STEP", "30"))  # mais rígido
+
+SERIAL_PRESS_MIN_KPA   = float(os.getenv("SERIAL_PRESS_MIN_KPA", "0"))
+SERIAL_PRESS_MAX_KPA   = float(os.getenv("SERIAL_PRESS_MAX_KPA", "400"))
+SERIAL_PRESS_MAX_STEP  = float(os.getenv("SERIAL_PRESS_MAX_STEP", "300"))  # kPa
+SERIAL_HOLD_LAST_ON_NAN = True
+
+
+def volts_to_kpa_linear(v: float) -> float:
+    # mapeamento linear baseado nos dois pontos dados
+    m = (PRESS_K_MAX - PRESS_K_MIN) / (PRESS_V_MAX - PRESS_V_MIN)
+    return PRESS_K_MIN + m * (v - PRESS_V_MIN)
 
 def _to_float(v):
     if isinstance(v, (int, float)):
@@ -35,10 +55,11 @@ class SerialReader:
     """
 
     def __init__(self, port: str, baud: int, usecase):
-        self.port = port
-        self.baud = baud
+        self.port = "COM3"
+        self.baud = 9600
         self.usecase = usecase
         self.device_id = os.getenv("SERIAL_DEVICE_ID", "arduino-01")
+        self._last_pressure: float | None = None
 
         # Config do filtro
         self._filter_enabled = os.getenv("FILTER_ENABLE", "true").lower() in ("1", "true", "yes", "on")
@@ -111,21 +132,50 @@ class SerialReader:
         # pressão
         if "pressao_volts" in data or "pressao_kPa" in data:
             try:
+                last = self._last_pressure  # último válido
+
+                # 1) obter p_kpa a partir de volts OU aceitar kPa direto
                 if "pressao_volts" in data:
                     v = _to_float(data["pressao_volts"])
+
+                    # rejeita NaN logo de cara
                     if isinstance(v, float) and math.isnan(v):
                         p_kpa = float("nan")
                     else:
-                        p_kpa = CAL_PRESSURE.apply(v)
+                        # 1.1) IGNORAR leituras fora do corredor de calibração
+                        if v < (PRESS_V_MIN - PRESS_V_TOL) or v > (PRESS_V_MAX + PRESS_V_TOL):
+                            # segura último válido se existir, senão NaN
+                            p_kpa = last if (SERIAL_HOLD_LAST_ON_NAN and last is not None and not math.isnan(last)) else float("nan")
+                        else:
+                            # 1.2) converte linearmente
+                            p_kpa = volts_to_kpa_linear(v)
                 else:
                     p_kpa = _to_float(data["pressao_kPa"])
 
+                # 2) validação/anti-salto ANTES da suavização
+                if isinstance(p_kpa, float) and not math.isnan(p_kpa):
+                    # trava fora do range calibrado (100–250 kPa)
+                    if p_kpa < PRESS_K_MIN or p_kpa > PRESS_K_MAX:
+                        p_kpa = last if (SERIAL_HOLD_LAST_ON_NAN and last is not None and not math.isnan(last)) else float("nan")
+                    # anti-pico: variação brusca em kPa
+                    elif last is not None and not math.isnan(last) and abs(p_kpa - last) > SERIAL_PRESS_MAX_STEP:
+                        p_kpa = last
+
+                # 3) suavização (não alimentar com NaN)
                 p_kpa = self._smooth("pressure", p_kpa)
+
+                # 4) envia leitura
                 await self.usecase.ingest(SensorReading(
                     device_id=self.device_id, sensor="pressure", value=p_kpa, unit="kPa"
                 ))
+
+                # 5) atualiza último somente se válido
+                if isinstance(p_kpa, float) and not math.isnan(p_kpa):
+                    self._last_pressure = p_kpa
+
             except Exception as e:
                 print("ingest pressure error:", e)
+
 
         # IR (binário)
         if "IR_pao" in data:

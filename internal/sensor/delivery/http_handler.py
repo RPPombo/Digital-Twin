@@ -180,7 +180,13 @@ def _fake_loop(device_id: str, period: float, loop: asyncio.AbstractEventLoop, u
             temperatura = BASE_TEMP_C + random.uniform(-TEMP_JITTER_C, TEMP_JITTER_C)
             ir_pao = random.random() < 0.15
             ir_mao = random.random() < 0.05
-            distancia = 300.0 + random.uniform(-30.0, 30.0)
+            # Gera uma distância inicial aleatória entre 20 e 60 mm
+            distancia = random.uniform(20.0, 60.0)
+
+            # --- dentro do loop de simulação ---
+            # Variação de até ±5 mm, mantendo o valor dentro dos limites
+            distancia += random.uniform(-5.0, 5.0)
+            distancia = max(20.0, min(60.0, distancia))  # limita entre 20 e 60 mm
 
             # arredonda 1x
             t_val = round(temperatura, 2)
@@ -372,7 +378,7 @@ async def serial_start(request: Request, body: dict = Body(...)):
     loop = asyncio.get_running_loop()
     usecase = request.app.state.usecase
     _serial_stop_event = threading.Event()
-    _serial_thread = threading.Thread(target=_serial_loop, args=(port, baud, device_id, loop, usecase), daemon=True)
+    _serial_thread = threading.Thread(target=_serial_loop, args=("COM3", 9600, device_id, loop, usecase), daemon=True)
     _serial_thread.start()
     return {"ok": True, "mode": "serial", "port": port, "baudrate": baud, "device_id": device_id}
 

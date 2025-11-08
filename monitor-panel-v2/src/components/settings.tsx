@@ -14,22 +14,33 @@ export function SettingsPanel() {
     setConfig({ [key]: value } as any)
   }
 
-  const fetchPorts = async () => {
-    if (!apiUrl) return
-    setLoadingPorts(true)
-    try {
-      const response = await fetch(`${apiUrl}/serial/ports`)
-      if (!response.ok) throw new Error("Falha ao buscar portas")
-      const data = await response.json()
-      const ports = (data?.ports || []).map((p: any) => p.device || p.name || "Unknown")
-      setAvailablePorts(ports)
-    } catch (error) {
-      console.error("Erro ao buscar portas:", error)
-      setAvailablePorts([])
-    } finally {
-      setLoadingPorts(false)
+ const fetchPorts = async () => {
+  if (!apiUrl) return
+  setLoadingPorts(true)
+  try {
+    const response = await fetch(`${apiUrl}/serial/ports`)
+    if (!response.ok) throw new Error("Falha ao buscar portas")
+    const data = await response.json()
+    let ports = (data?.ports || []).map((p: any) => p.device || p.name || "Unknown")
+
+    // ✅ Garante que COM3 e COM4 apareçam na lista (sem duplicar)
+    const extras = ["COM3", "COM4"]
+    for (const extra of extras) {
+      if (!ports.includes(extra)) {
+        ports.push(extra)
+      }
     }
+
+    setAvailablePorts(ports)
+  } catch (error) {
+    console.error("Erro ao buscar portas:", error)
+    // ✅ Mesmo em caso de erro, COM3 e COM4 aparecem
+    setAvailablePorts(["COM3", "COM4"])
+  } finally {
+    setLoadingPorts(false)
   }
+}
+
 
   useEffect(() => {
     fetchPorts()
@@ -92,6 +103,7 @@ export function SettingsPanel() {
                     ))
                   ) : (
                     <option disabled>Nenhuma porta encontrada</option>
+
                   )}
                 </select>
                 <button

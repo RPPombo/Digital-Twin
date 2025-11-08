@@ -25,10 +25,14 @@ export function PressMachineScene() {
         obj.castShadow = true
         obj.receiveShadow = true
 
-        const material = obj.material as THREE.Material
-        if (material) {
-          material.side = THREE.DoubleSide
-          material.transparent = false
+        // 🌟 Ajusta materiais para ficarem visíveis sem HDR
+        const m = obj.material as any
+        if (m && (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) {
+          m.metalness = Math.min(0.4, m.metalness ?? 0.4)
+          m.roughness = Math.max(0.35, m.roughness ?? 0.6)
+          m.envMapIntensity = 1.0
+          if (m.map) m.map.colorSpace = THREE.SRGBColorSpace
+          m.needsUpdate = true
         }
       }
     })
@@ -59,9 +63,36 @@ export function PressMachineScene() {
 
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[5, 5, 5]} intensity={1.2} />
-      <primitive object={scene} scale={20} position={[-1.8, -2, 0.5]} />
+      {/* 💡 Luz de preenchimento suave */}
+      <hemisphereLight
+        intensity={1.0}
+        skyColor={"#ffffff"}
+        groundColor={"#222222"}
+      />
+
+      {/* 💡 Luz ambiente para evitar sombras muito escuras */}
+      <ambientLight intensity={1.0} />
+
+      {/* 💡 Luz direcional principal (simula o sol) */}
+      <directionalLight
+        position={[6, 8, 6]}
+        intensity={2.5}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-bias={-0.0001}
+      />
+      <directionalLight position={[-4, 6, -3]} intensity={1.0} color={"#b0d0ff"} />
+
+      {/* ✨ Luz pontual sutil para brilho metálico */}
+      <pointLight position={[0, 5, 0]} intensity={0.8} decay={2} />
+
+      {/* 🧱 Modelo da prensa */}
+      <primitive
+        object={scene}
+        scale={20}
+        position={[-1.8, -2, 0.5]}
+      />
     </>
   )
 }

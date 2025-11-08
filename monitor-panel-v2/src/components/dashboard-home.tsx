@@ -8,14 +8,10 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "rec
 import { useWebSocket } from "@/providers/ws-provider"
 import MacOSWindow from "./macos-window"
 
-
-
 import * as THREE from "three"
 import { useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { useFrame } from "@react-three/fiber"
-
-
 
 import { useGLTF } from "@react-three/drei"
 import { PressMachineScene } from "./press-machine-scene"
@@ -23,8 +19,41 @@ import Screen_Test from "./screen_test"
 import test from "node:test"
 import { ErrorBoundary } from "./ErrorBoundary"
 
+/* ---------- Helper universal p/ normalizar payloads de sensores ---------- */
+function normalizeSensorPayload(msg: any) {
+  // 1) se vier string, tenta parsear
+  if (typeof msg === "string") {
+    try { msg = JSON.parse(msg) } catch { return {} as any }
+  }
+  // 2) desce um nível se vier envelopado
+  let r = msg?.reading ?? msg?.data ?? msg ?? {}
 
+  // 3) casos unitários {sensor:'pressure', value:123}
+  if (r && typeof r === "object" && "sensor" in r && "value" in r) {
+    const m: any = {}
+    const s = String((r as any).sensor).toLowerCase()
+    if (s.includes("temp")) m.temperature = Number((r as any).value)
+    if (s.includes("press")) m.pressure = Number((r as any).value)
+    if (s.includes("dist")) m.distance = Number((r as any).value)
+    if (s.includes("bread")) m.ir_bread = !!(r as any).value
+    if (s.includes("hand"))  m.ir_hand  = !!(r as any).value
+    r = m
+  }
 
+  // 4) normaliza nomes do backend
+  if ("pressao_kPa" in r && !("pressure" in r)) r = { ...r, pressure: Number((r as any).pressao_kPa) }
+  if ("temperatura_C" in r && !("temperature" in r)) r = { ...r, temperature: Number((r as any).temperatura_C) }
+  if ("distancia_mm" in r && !("distance" in r))     r = { ...r, distance: Number((r as any).distancia_mm) }
+
+  // 5) garante números/booleanos
+  return {
+    temperature: Number((r as any).temperature ?? 0),
+    pressure:    Number((r as any).pressure ?? 0),
+    distance:    Number((r as any).distance ?? 0),
+    ir_bread:    Boolean((r as any).ir_bread),
+    ir_hand:     Boolean((r as any).ir_hand),
+  }
+}
 
 function CameraSync({
   position,
@@ -41,11 +70,6 @@ function CameraSync({
   })
   return null
 }
-
-
-
-
-
 
 export function CameraControlPanel({
   cameraPosition,
@@ -95,8 +119,6 @@ export function CameraControlPanel({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-
-
       <div
         className={`bg-[#1e1e1e]/95 backdrop-blur-xl rounded-xl shadow-2xl overflow-hidden border border-gray-700
         transition-all duration-500 ease-in-out
@@ -200,14 +222,10 @@ export function CameraControlPanel({
   )
 }
 
-
-
 function PressMachineModel() {
   const { scene } = useGLTF("/models/prensa_completa.glb")
   return <primitive object={scene} scale={20} position={[-1.8, -2, 0.5]} />
 }
-
-
 
 // 🧩 Tipagem para dados dos sensores
 interface SensorData {
@@ -229,42 +247,26 @@ export default function DashboardHome() {
   const [chartData, setChartData] = useState<ChartData[]>([])
   useGLTF.preload("/models/prensa_completa.glb")
 
-useEffect(() => {
-  const entries = Object.values(sensors)
-  if (entries.length === 0) return
+  useEffect(() => {
+    const entries = Object.values(sensors as any)
+    if (entries.length === 0) return
 
-  const latest: any = entries[entries.length - 1]
+    // último pacote vindo do provider
+    const latestRaw: any = entries.at(-1)
+    const rec = normalizeSensorPayload(latestRaw)
 
-  // Converte string JSON (vindo via WebSocket)
-  let parsed = latest
-  if (typeof latest === "string") {
-    try {
-      parsed = JSON.parse(latest)
-    } catch (e) {
-      console.warn("⚠️ Erro ao parsear leitura do sensor:", latest)
-    }
-  }
+    console.log("📡 Normalized:", rec, "RAW:", latestRaw)
 
-  // Mapeia os campos corretos
-  const temperature = parsed.temperature ?? 0
-  const pressure = parsed.pressure ?? parsed.pressao_kPa ?? 0
-  const distance = parsed.distance ?? 0
-
-  // Debug temporário
-  console.log("📡 Dados recebidos:", { temperature, pressure, distance })
-
-  setChartData((prev: ChartData[]) => [
-    ...prev.slice(-30),
-    {
-      time: new Date().toLocaleTimeString().split(" ")[0],
-      temperature,
-      pressure,
-      distance,
-    },
-  ])
-}, [sensors])
-
-
+    setChartData((prev: ChartData[]) => [
+      ...prev.slice(-30),
+      {
+        time: new Date().toLocaleTimeString().split(" ")[0],
+        temperature: rec.temperature,
+        pressure: rec.pressure,
+        distance: rec.distance,
+      },
+    ])
+  }, [sensors])
 
   const latestValues = chartData[chartData.length - 1] || {
     temperature: 0,
@@ -272,11 +274,9 @@ useEffect(() => {
     distance: 0,
   }
 
-
   const [cameraPosition, setCameraPosition] = useState(new THREE.Vector3(3, 2, 5))
   const [autoFollow, setAutoFollow] = useState(true)
   const controlsRef = useRef<any>(null)
-
 
   return (
     <div className="flex flex-col min-h-screen text-gray-300 px-10 pt-6 space-y-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -318,7 +318,6 @@ useEffect(() => {
               dataKey="pressure"
               data={chartData}
             />
-
           </MacOSWindow>
 
           <MacOSWindow title="Distance">
@@ -338,34 +337,38 @@ useEffect(() => {
             <div className="w-full h-[600px] bg-[#0f0f0f]/60 rounded-2xl border border-gray-700 shadow-xl overflow-hidden relative">
               <ErrorBoundary fallback={<div className="p-4 text-sm text-red-300">Falha ao carregar assets 3D.</div>}>
 
-              <Canvas camera={{ fov: 45 }}>
-                <CameraSync position={cameraPosition} autoFollow={autoFollow} />
+                <Canvas camera={{ fov: 45 }}>
+                  <CameraSync position={cameraPosition} autoFollow={autoFollow} />
 
-                <ambientLight intensity={0.8} />
-                <directionalLight position={[2, 2, 5]} />
+                  <ambientLight intensity={0.8} />
+                  <directionalLight position={[2, 2, 5]} />
 
-                <Suspense fallback={null}>
-                  <PressMachineScene />
-                  {/* <Screen_Test/> */}
-                  <Environment files="/hdr/potsdamer_platz_1k.hdr" background />
-                </Suspense>
+                  <Suspense fallback={null}>
+                    <PressMachineScene />
+                    {/* <Screen_Test/> */}
+                  </Suspense>
 
-                <OrbitControls
-                  ref={controlsRef}
-                  enablePan
-                  enableZoom
-                  enableRotate
-                  onStart={() => setAutoFollow(false)}
-                />
-              </Canvas>
+                  <OrbitControls
+                    ref={controlsRef}
+                    enablePan
+                    enableZoom
+                    enableRotate
+                    onStart={() => setAutoFollow(false)}
+                  />
+                </Canvas>
 
               </ErrorBoundary>
+
+              {/* Debug overlay (remova quando quiser) */}
+              <div className="absolute top-3 right-4 text-[10px] max-w-sm bg-black/60 p-2 rounded border border-gray-700">
+                Último: {JSON.stringify(normalizeSensorPayload(Object.values(sensors as any).at(-1)), null, 0)}
+              </div>
+
               <CameraControlPanel
                 cameraPosition={cameraPosition}
                 setCameraPosition={setCameraPosition}
                 setAutoFollow={setAutoFollow}
               />
-
 
               <div className="absolute top-3 left-4 text-xs text-gray-400 bg-black/50 px-3 py-1 rounded-lg border border-gray-700">
                 Digital Twin — Press Machine
@@ -401,7 +404,7 @@ function SensorCard({
           {icon}
           <h3 className="font-semibold text-white">{title}</h3>
         </div>
-        <span className="text-sm text-gray-400">{latest.toFixed(2)} {unit}</span>
+        <span className="text-sm text-gray-400">{Number(latest).toFixed(2)} {unit}</span>
       </div>
       <div className="h-20">
         <ResponsiveContainer width="100%" height="100%">

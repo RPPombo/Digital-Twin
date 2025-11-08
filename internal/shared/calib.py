@@ -9,4 +9,4 @@ class LinearCalibration:  # calibração linear
         return self.a * v + self.b
 
 # Calibração obtida em bancada (1–4 bar)
-CAL_PRESSURE = LinearCalibration(a=8333.0, b=-7583.0)   
+CAL_PRESSURE = LinearCalibration(a=2500.0, b=-175.0)

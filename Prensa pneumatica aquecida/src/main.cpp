@@ -128,13 +128,13 @@ void loop() {
   float Vadc   = (leituraPressao / 1023.0) * VREF_ADC;
 
   // Remove o offset do AD620 (REF ajustado no trimpot ~2,50 V)
-  const float VREF_AD620 = 2.50;         // ajuste se você setar outro
+  const float VREF_AD620 = 1.8;         // ajuste se você setar outro
   float Vsinal = Vadc - VREF_AD620;      // volts "úteis" para a calibração
   
   // --- Sensores IR ---
   bool pao = (digitalRead(IR_PAO) == LOW);  // se seu IR for ativo em LOW, inverta
   int  leituramao = analogRead(IR_MAO);
-  bool mao = (leituramao <= 900);            // ajustar threshold no hardware
+  bool mao = (leituramao <= 750);            // ajustar threshold no hardware
 
   // --- HC-SR04 ---
   float distancia_mm = medirDistanciaMM();
@@ -169,7 +169,7 @@ void loop() {
       acionar = false;
     }
   }
-  if (valvulaAberta && (agora - tempo_salvo > 2000)) {
+  if (valvulaAberta && (agora - tempo_salvo > 5000)) {
     digitalWrite(RELE_VALVULA, HIGH); // fecha
     valvulaAberta = false;
     cooldown = agora; // inicia cooldown só após ter aberto
